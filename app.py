@@ -46,13 +46,6 @@ html, body, [class*="css"] {
     height: 90px;
 }
 
-.artist-image {
-    width: 90px;
-    height: 90px;
-    object-fit: cover;
-    flex-shrink: 0;
-}
-
 .artist-image-placeholder {
     width: 90px;
     height: 90px;
@@ -137,6 +130,7 @@ html, body, [class*="css"] {
 </style>
 """, unsafe_allow_html=True)
 
+
 # spotify auth
 def get_spotify_oauth():
     return SpotifyOAuth(
@@ -148,10 +142,12 @@ def get_spotify_oauth():
         show_dialog=True
     )
 
+
 @st.cache_data
 def load_base_matrix():
     df = pd.read_csv("data/user_artist_matrix.csv", index_col=0)
     return df
+
 
 def get_recommendations(user, df, similarity_df, top_k=3, top_n=5):
     similar_users = similarity_df[user].drop(user).nlargest(top_k)
@@ -163,6 +159,7 @@ def get_recommendations(user, df, similarity_df, top_k=3, top_n=5):
                 scores[artist] = scores.get(artist, 0) + sim_score * play_count
     recommendations = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
     return recommendations
+
 
 # header
 st.markdown("""
@@ -201,21 +198,18 @@ if st.session_state.token_info:
     # fetch top artists
     with st.spinner("Fetching your top artists..."):
         results = sp.current_user_top_artists(limit=20, time_range="medium_term")
-        user_artists = {}
 
         if not results["items"]:
-    # medium_term has no data, try short_term
             results = sp.current_user_top_artists(limit=20, time_range="short_term")
 
         if not results["items"]:
-    # try long_term as last resort
             results = sp.current_user_top_artists(limit=20, time_range="long_term")
 
+        user_artists = {}
         for i, artist in enumerate(results["items"]):
             name = artist.get("name", "Unknown")
             user_artists[name] = 20 - i
 
-    
     # show their top artists
     st.markdown('<div class="section-title">Your top artists</div>', unsafe_allow_html=True)
     top_names = list(user_artists.keys())[:5]
@@ -224,11 +218,19 @@ if st.session_state.token_info:
 
     # add to matrix and get recommendations
     base_df = load_base_matrix()
-    new_row = pd.Series(user_artists, name=username)
-    new_row = pd.Series(user_artists, name=username)
-    
-    
-    df = pd.concat([base_df, new_row.to_frame().T]).fillna(0)
+
+    if username in base_df.index:
+        for artist, score in user_artists.items():
+            base_df.loc[username, artist] = score
+        df = base_df.fillna(0)
+    else:
+        new_row = pd.Series(user_artists, name=username)
+        df = pd.concat([base_df, new_row.to_frame().T]).fillna(0)
+
+    # save updated matrix to disk
+    df.to_csv("data/user_artist_matrix.csv")
+    load_base_matrix.clear()
+    st.success(f"Your taste has been added to Soundalike 🎵")
 
     similarity = cosine_similarity(df)
     similarity_df = pd.DataFrame(similarity, index=df.index, columns=df.index)
@@ -236,7 +238,7 @@ if st.session_state.token_info:
     if st.button("Get Recommendations →", type="primary", use_container_width=True):
         recs = get_recommendations(username, df, similarity_df)
         max_score = recs[0][1] if recs and recs[0][1] > 0 else 1
-    
+
         similar_users = similarity_df[username].drop(username).nlargest(3)
         st.markdown('<div class="section-title">Taste matches</div>', unsafe_allow_html=True)
         pills_html = "".join([f'<span class="match-pill">👤 {u} — {score:.0%}</span>' for u, score in similar_users.items()])
