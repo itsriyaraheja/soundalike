@@ -161,6 +161,19 @@ def get_recommendations(user, df, similarity_df, top_k=3, top_n=5):
     return recommendations
 
 
+@st.cache_data
+def get_artist_image(artist_name, token):
+    try:
+        sp = spotipy.Spotify(auth=token)
+        results = sp.search(q=f"artist:{artist_name}", type="artist", limit=1)
+        items = results["artists"]["items"]
+        if items and items[0]["name"].lower() == artist_name.lower() and items[0]["images"]:
+            return items[0]["images"][0]["url"]
+    except:
+        pass
+    return None
+
+
 # header
 st.markdown("""
 <div class="header">
@@ -247,9 +260,16 @@ if st.session_state.token_info:
         st.markdown('<div class="section-title">Recommended for you</div>', unsafe_allow_html=True)
         for i, (artist, score) in enumerate(recs, start=1):
             pct = int((score / max_score) * 100)
+            image_url = get_artist_image(artist, st.session_state.token_info["access_token"])
+
+            if image_url:
+                image_html = f'<img src="{image_url}" alt="{artist}" style="width:90px;height:90px;object-fit:cover;flex-shrink:0;"/>'
+            else:
+                image_html = '<div class="artist-image-placeholder">🎵</div>'
+
             st.markdown(f"""
             <div class="artist-card">
-                <div class="artist-image-placeholder">🎵</div>
+                {image_html}
                 <div class="artist-info">
                     <div class="artist-name">{artist}</div>
                     <div class="score-bar-wrap">
